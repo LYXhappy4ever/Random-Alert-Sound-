@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>专注 (Focus Zen)</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2240%22 fill=%22%23007aff%22/></svg>">
+    
+    <style>
+        :root {
+            /* 🎨 配色系统 */
+            --primary: #007aff;       
+            --primary-light: #e6f2ff;
+            --secondary: #ff3b30;     
+            --bg-page: #f2f2f7;       
+            --bg-card: #ffffff;
+            --text-main: #000000;
+            --text-sub: #8e8e93;
+            --border-radius: 16px;
+            --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.03);
+            --safe-top: env(safe-area-inset-top);
+            --safe-bottom: env(safe-area-inset-bottom);
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .app-container { flex: 1; position: relative; overflow: hidden; }
+
+        .page {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            padding: calc(var(--safe-top) + 20px) 20px calc(90px + var(--safe-bottom)) 20px;
+            overflow-y: auto; opacity: 0; pointer-events: none;
+            transform: scale(0.98); transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex; flex-direction: column; background: var(--bg-page);
+        }
+        .page.active { opacity: 1; pointer-events: auto; transform: scale(1); z-index: 10; }
+
+        /* --- 底部导航栏 --- */
+        .tab-bar {
+            position: fixed; bottom: 0; left: 0; width: 100%;
+            height: calc(60px + var(--safe-bottom));
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border-top: 0.5px solid rgba(0,0,0,0.1);
+            display: flex; justify-content: space-around; align-items: flex-start;
+            padding-top: 10px; z-index: 100;
+        }
+        .tab-item {
+            flex: 1; display: flex; flex-direction: column; align-items: center;
+            font-size: 10px; color: var(--text-sub); cursor: pointer; transition: color 0.2s;
+        }
+        .tab-item svg { width: 24px; height: 24px; fill: currentColor; margin-bottom: 4px; }
+        .tab-item.active { color: var(--primary); }
+
+        /* --- 首页：计时器 (修复居中问题) --- */
+        .timer-view { align-items: center; justify-content: center; text-align: center; }
+
+        .glow-ring {
+            position: relative;
+            width: 280px; height: 280px;
+            border-radius: 50%; background: white;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.05);
+            margin-bottom: 60px;
+            border: 8px solid var(--primary-light);
+        }
+        .glow-ring.running { border-color: var(--primary); transition: border-color 0.5s; }
+
+        /* 绝对居中容器 */
+        .ring-content {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex; flex-direction: column; align-items: center;
+        }
+
+        .time-text {
+            font-size: 76px; font-weight: 600; font-variant-numeric: tabular-nums;
+            color: var(--text-main); line-height: 1;
+            /* 微调视觉重心，因为数字没有 descender (下伸部)，看起来偏高，所以往下挪一点 */
+            transform: translateY(5px); 
+        }
+
+        /* 状态文字单独定位，不影响数字居中 */
+        .status-container {
+            position: absolute;
+            top: 100%; /* 在数字下方 */
+            left: 50%;
+            transform: translateX(-50%);
+            margin-top: 10px;
+            width: 200px;
+        }
+        
+        .status-badge { font-size: 16px; color: var(--text-sub); letter-spacing: 1px; }
+        .sub-status { font-size: 13px; color: var(--secondary); margin-top: 4px; min-height: 16px; }
+
+        /* 控制按钮 */
+        .controls { display: flex; gap: 30px; align-items: center; }
+        .btn-main {
+            width: 88px; height: 88px; border-radius: 50%;
+            background: var(--primary); color: white; border: none; cursor: pointer;
+            box-shadow: 0 10px 25px rgba(0, 122, 255, 0.3);
+            display: flex; align-items: center; justify-content: center;
+            transition: transform 0.1s;
+        }
+        .btn-main:active { transform: scale(0.95); }
+        .btn-sec {
+            width: 56px; height: 56px; border-radius: 50%;
+            background: #eef1f6; color: var(--text-sub); border: none; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        /* --- 统计页 --- */
+        .page-header { margin-bottom: 20px; }
+        .page-title { font-size: 24px; font-weight: 700; margin: 0; }
+        
+        .overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+        .data-card {
+            background: var(--bg-card); padding: 16px; border-radius: var(--border-radius);
+            box-shadow: var(--shadow-card);
+        }
+        .card-label { font-size: 12px; color: var(--text-sub); margin-bottom: 4px; }
+        .card-value { font-size: 26px; font-weight: 600; color: var(--text-main); font-family: -apple-system, sans-serif; }
+        .card-unit { font-size: 12px; color: var(--text-sub); font-weight: 400; margin-left: 2px; }
+
+        .chart-section {
+            background: var(--bg-card); padding: 20px; border-radius: var(--border-radius);
+            margin-bottom: 20px; box-shadow: var(--shadow-card);
+            overflow: hidden; /* 防止内容溢出圆角 */
+        }
+        .section-title { font-size: 16px; font-weight: 600; margin-bottom: 15px; }
+
+        .bar-chart { display: flex; justify-content: space-between; align-items: flex-end; height: 120px; }
+        .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+        .bar-track { width: 8px; height: 100%; background: #f2f2f7; border-radius: 4px; position: relative; overflow: hidden;}
+        .bar-fill { position: absolute; bottom: 0; left: 0; width: 100%; background: var(--primary); border-radius: 4px; height: 0%; transition: height 0.8s ease; }
+        .bar-label { font-size: 10px; color: var(--text-sub); }
+
+        /* --- 修复后的热力图 (GitHub Style) --- */
+        .heatmap-container {
+            overflow-x: auto; /* 允许横向滚动 */
+            padding-bottom: 10px; /* 给滚动条留点空间 */
+            -webkit-overflow-scrolling: touch; /* iOS丝滑滚动 */
+            direction: rtl; /* 从右向左排列(最近的在右边) */
+        }
+        /* 为了让内容从左到右显示(虽然容器是RTL)，我们需要反转网格流向或手动计算 */
+        /* 更好的方案：容器LTR，JS计算好位置后自动滚到最右边 */
+        .heatmap-scroll-wrapper {
+            display: inline-block;
+            direction: ltr; /* 内容恢复从左到右 */
+            min-width: 100%;
+        }
+
+        .heatmap-grid {
+            display: grid;
+            /* 7行 (周一到周日)，约53列 (一年) */
+            grid-template-rows: repeat(7, 1fr);
+            grid-auto-flow: column; 
+            gap: 3px;
+        }
+        
+        .heat-cell {
+            width: 10px; height: 10px; 
+            background: #f2f2f7; border-radius: 2px;
+        }
+        .bg-l1 { background: #b3d7ff; }
+        .bg-l2 { background: #66b1ff; }
+        .bg-l3 { background: #007aff; }
+
+        .record-list { display: flex; flex-direction: column; gap: 15px; padding-bottom: 20px; }
+        .date-header { font-size: 18px; font-weight: 700; margin: 10px 0 5px 0; }
+        .record-item {
+            background: var(--bg-card); border-radius: 12px; padding: 15px;
+            display: flex; justify-content: space-between; align-items: center;
+            box-shadow: var(--shadow-card);
+        }
+        .record-left { display: flex; flex-direction: column; gap: 4px; }
+        .time-range { font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums;}
+        .record-tag { font-size: 11px; color: #ff9500; display: flex; align-items: center; gap: 4px; }
+        .record-dot { width: 6px; height: 6px; border-radius: 50%; background: #ff9500; }
+        .record-duration { font-size: 18px; font-weight: 600; color: var(--primary); font-variant-numeric: tabular-nums; }
+        .record-unit { font-size: 12px; font-weight: 400; }
+
+        /* --- 设置页 --- */
+        .form-group {
+            background: white; border-radius: var(--border-radius);
+            margin-bottom: 20px; box-shadow: var(--shadow-card); overflow: hidden;
+        }
+        .form-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 16px; border-bottom: 1px solid #f2f2f7;
+        }
+        .form-row:last-child { border-bottom: none; }
+        .form-label { font-size: 16px; }
+        .form-input {
+            text-align: right; border: none; font-size: 16px; color: var(--primary);
+            font-weight: 500; width: 120px; outline: none; background: transparent;
+        }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <div class="page active" id="view-timer">
+            <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+                <div class="glow-ring" id="glow-ring">
+                    <div class="ring-content">
+                        <div class="time-text" id="main-timer">90:00</div>
+                        
+                        <div class="status-container">
+                            <div class="status-badge" id="status-text">准备专注</div>
+                            <div class="sub-status" id="sub-info"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <button class="btn-sec" id="btn-stop" onclick="finishSession(true)" style="display:none; color:#ff3b30;">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
+                    </button>
+                    
+                    <button class="btn-main" onclick="toggleTimer()">
+                        <svg id="icon-play" viewBox="0 0 24 24" width="40" height="40" fill="white"><path d="M8 5v14l11-7z"/></svg>
+                        <svg id="icon-pause" viewBox="0 0 24 24" width="40" height="40" fill="white" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                    </button>
+
+                    <button class="btn-sec" id="btn-skip" onclick="skipRest()" style="display:none; color:#007aff;">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg>
+                    </button>
+                    
+                    <button class="btn-sec" id="btn-reset" onclick="resetUI()">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="page" id="view-stats">
+            <div class="page-header"><h1 class="page-title">数据统计</h1></div>
+
+            <div class="overview-grid">
+                <div class="data-card">
+                    <div class="card-label">今日专注</div>
+                    <div><span class="card-value" id="stat-today-time">0</span><span class="card-unit">m</span></div>
+                </div>
+                <div class="data-card">
+                    <div class="card-label">今日周期</div>
+                    <div><span class="card-value" id="stat-today-count">0</span><span class="card-unit">个</span></div>
+                </div>
+                <div class="data-card">
+                    <div class="card-label">总专注</div>
+                    <div><span class="card-value" id="stat-total-time">0</span><span class="card-unit">h</span></div>
+                </div>
+                <div class="data-card">
+                    <div class="card-label">总周期</div>
+                    <div><span class="card-value" id="stat-total-count">0</span><span class="card-unit">个</span></div>
+                </div>
+            </div>
+
+            <div class="chart-section">
+                <div class="section-title">最佳专注时间 (近7日)</div>
+                <div class="bar-chart" id="week-chart"></div>
+            </div>
+
+            <div class="chart-section">
+                <div class="section-title">年度热力图 (全年)</div>
+                <div class="heatmap-container" id="heatmap-container">
+                    <div class="heatmap-scroll-wrapper">
+                        <div class="heatmap-grid" id="heatmap-grid">
+                            </div>
+                    </div>
+                </div>
+            </div>
+
+            <h2 class="page-title" style="margin-top: 10px; margin-bottom: 15px;">专注记录</h2>
+            <div id="history-container" class="record-list"></div>
+        </div>
+
+        <div class="page" id="view-settings">
+            <h1 class="page-title" style="margin-bottom: 20px;">设置</h1>
+            <div class="form-group">
+                <div class="form-row">
+                    <span class="form-label">专注模式</span>
+                    <select class="form-input" id="mode-select" onchange="changeMode()">
+                        <option value="RANDOM">随机专注</option>
+                        <option value="COUNTDOWN">倒计时</option>
+                        <option value="STOPWATCH">正计时</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="setting-random" class="form-group">
+                <div class="form-row">
+                    <span class="form-label">目标时长 (分钟)</span>
+                    <input type="number" class="form-input" id="input-random-total" value="90">
+                </div>
+                <div class="form-row">
+                    <span class="form-label">随机检测间隔 (分钟)</span>
+                    <div style="display:flex; gap:5px; align-items:center;">
+                        <input type="number" class="form-input" id="input-min" value="3" style="width:40px; text-align:center;">
+                        <span style="color:#ccc">-</span>
+                        <input type="number" class="form-input" id="input-max" value="5" style="width:40px; text-align:center;">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <span class="form-label">微休息时长 (秒)</span>
+                    <input type="number" class="form-input" id="input-micro" value="10">
+                </div>
+                <div class="form-row">
+                    <span class="form-label">大休息时长 (分钟)</span>
+                    <input type="number" class="form-input" id="input-random-rest" value="20">
+                </div>
+            </div>
+
+            <div id="setting-countdown" class="form-group hidden">
+                <div class="form-row">
+                    <span class="form-label">倒计时时长 (分钟)</span>
+                    <input type="number" class="form-input" id="input-countdown-total" value="20">
+                </div>
+            </div>
+            
+            <div id="setting-stopwatch" class="form-group hidden">
+                <div class="form-row">
+                    <span class="form-label">正计时目标 (分钟)</span>
+                    <input type="number" class="form-input" id="input-stopwatch-target" value="90">
+                </div>
+            </div>
+
+            <h3 style="margin-top:20px; font-size:16px; margin-bottom:10px;">数据同步</h3>
+            <div class="form-group">
+                <div style="padding:15px; display:flex; gap:10px;">
+                    <input type="text" id="sync-id" placeholder="输入同步码" style="flex:1; padding:10px; border:1px solid #eee; border-radius:8px; outline:none;">
+                    <button class="btn-sec" onclick="createNewSyncId()" style="width:auto; padding:0 15px; border-radius:8px; font-size:14px;">新建</button>
+                </div>
+                <div class="form-row">
+                    <span onclick="uploadData()" style="color:var(--primary); font-weight:600; cursor:pointer; flex:1; text-align:center;">⬆️ 上传数据</span>
+                    <div style="width:1px; height:20px; background:#eee;"></div>
+                    <span onclick="downloadData()" style="color:var(--text-main); font-weight:600; cursor:pointer; flex:1; text-align:center;">⬇️ 下载数据</span>
+                </div>
+                <div id="sync-status" style="padding:0 15px 15px; font-size:12px; color:var(--secondary); text-align:center;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-bar">
+        <div class="tab-item active" onclick="switchTab('timer', this)">
+            <svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+            <span>专注</span>
+        </div>
+        <div class="tab-item" onclick="switchTab('stats', this)">
+            <svg viewBox="0 0 24 24"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg>
+            <span>统计</span>
+        </div>
+        <div class="tab-item" onclick="switchTab('settings', this)">
+            <svg viewBox="0 0 24 24"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>
+            <span>设置</span>
+        </div>
+    </div>
+
+    <script id="worker-code" type="javascript/worker">
+        let timerID = null;
+        self.onmessage = function(e) {
+            if (e.data === 'start') {
+                if (timerID) clearInterval(timerID);
+                timerID = setInterval(function() { self.postMessage('tick'); }, 1000);
+            } else if (e.data === 'stop') {
+                if (timerID) clearInterval(timerID);
+                timerID = null;
+            }
+        };
+    </script>
+
+    <script>
+        const worker = new Worker(window.URL.createObjectURL(new Blob([document.getElementById('worker-code').textContent], {type: "text/javascript"})));
+        let wakeLock = null;
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        let isRunning = false;
+        let currentMode = 'RANDOM';
+        let currentState = 'IDLE'; 
+        
+        let mainTime = 0; 
+        let totalTime = 0; 
+        let sessionDurationSeconds = 0; 
+        let sessionStartTime = null;    
+        let eventTimeLeft = 0;
+
+        window.onload = function() {
+            changeMode();
+            loadStats();
+            loadSyncId();
+            worker.onmessage = function(e) { if (e.data === 'tick') tick(); };
+            // 初始化热力图并滚动到最右
+            renderFullYearHeatmap();
+            setTimeout(() => {
+                const container = document.getElementById('heatmap-container');
+                container.scrollLeft = container.scrollWidth;
+            }, 100);
+        };
+
+        function switchTab(viewId, btn) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById('view-' + viewId).classList.add('active');
+            document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+            btn.classList.add('active');
+            if(viewId === 'stats') {
+                loadStats();
+                // 再次确保滚动到底
+                setTimeout(() => {
+                    const container = document.getElementById('heatmap-container');
+                    container.scrollLeft = container.scrollWidth;
+                }, 50);
+            }
+            if(viewId === 'timer') changeMode();
+        }
+
+        function changeMode() {
+            if(isRunning) return; 
+            currentMode = document.getElementById('mode-select').value;
+            document.querySelectorAll('[id^="setting-"]').forEach(el => el.classList.add('hidden'));
+            if (currentMode === 'RANDOM') {
+                document.getElementById('setting-random').classList.remove('hidden');
+                totalTime = document.getElementById('input-random-total').value * 60;
+                document.getElementById('status-text').innerText = "准备专注";
+            } else if (currentMode === 'COUNTDOWN') {
+                document.getElementById('setting-countdown').classList.remove('hidden');
+                totalTime = document.getElementById('input-countdown-total').value * 60;
+                document.getElementById('status-text').innerText = "倒计时";
+            } else if (currentMode === 'STOPWATCH') {
+                document.getElementById('setting-stopwatch').classList.remove('hidden');
+                totalTime = document.getElementById('input-stopwatch-target').value * 60;
+                document.getElementById('status-text').innerText = "正计时";
+            }
+            resetUI();
+        }
+
+        function toggleTimer() { isRunning ? pauseTimer() : startTimer(); }
+
+        function startTimer() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            requestWakeLock();
+            if (currentState === 'IDLE') initSession();
+            isRunning = true;
+            updatePlayButton(true);
+            document.getElementById('glow-ring').classList.add('running');
+            worker.postMessage('start');
+            document.getElementById('btn-reset').style.display = 'none';
+        }
+
+        function pauseTimer() {
+            worker.postMessage('stop');
+            releaseWakeLock();
+            isRunning = false;
+            updatePlayButton(false);
+            document.getElementById('glow-ring').classList.remove('running');
+            document.getElementById('status-text').innerText = "已暂停";
+            if(currentState !== 'IDLE') {
+                document.getElementById('btn-stop').style.display = 'flex';
+                if (currentState === 'LONG_REST') document.getElementById('btn-skip').style.display = 'flex';
+            }
+        }
+
+        function initSession() {
+            currentState = 'RUNNING';
+            sessionDurationSeconds = 0; 
+            sessionStartTime = new Date(); 
+            mainTime = totalTime; 
+            if (currentMode === 'RANDOM') eventTimeLeft = getRandomInterval();
+            if (currentMode === 'STOPWATCH') mainTime = 0;
+            updateDisplay();
+        }
+
+        function tick() {
+            if (currentState === 'RUNNING' || currentState === 'OVERTIME') sessionDurationSeconds++;
+            if (currentMode === 'STOPWATCH') {
+                mainTime++;
+                if (mainTime >= totalTime && currentState === 'RUNNING') triggerAlarm();
+            } else {
+                mainTime--;
+                if (mainTime <= 0 && currentState === 'RUNNING') triggerAlarm();
+            }
+            if (currentMode === 'RANDOM') {
+                if (currentState === 'RUNNING' || currentState === 'OVERTIME') {
+                    eventTimeLeft--;
+                    if (eventTimeLeft <= 0) triggerMicroRest();
+                } else if (currentState === 'MICRO_REST') {
+                    eventTimeLeft--;
+                    if (eventTimeLeft <= 0) triggerFocusReturn();
+                }
+            }
+            if (currentState === 'LONG_REST') {
+                if (mainTime <= 0) finishSession(true);
+            }
+            updateDisplay();
+        }
+
+        function triggerAlarm() {
+            playSound('bell');
+            currentState = 'OVERTIME';
+            document.getElementById('status-text').innerText = "目标达成";
+            document.getElementById('status-text').style.color = 'var(--primary)';
+            if(navigator.vibrate) navigator.vibrate(500);
+        }
+
+        function triggerMicroRest() {
+            playSound('ding');
+            document.body.dataset.prevState = currentState;
+            currentState = 'MICRO_REST';
+            eventTimeLeft = document.getElementById('input-micro').value;
+            document.getElementById('status-text').innerText = "闭眼休息";
+            document.getElementById('status-text').style.color = '#34c759';
+        }
+
+        function triggerFocusReturn() {
+            playSound('bloop');
+            currentState = document.body.dataset.prevState || 'RUNNING';
+            eventTimeLeft = getRandomInterval();
+            document.getElementById('status-text').innerText = "专注中";
+            document.getElementById('status-text').style.color = 'var(--text-sub)';
+        }
+
+        function finishSession(save) {
+            pauseTimer();
+            stopAllSounds();
+            const actualMinutes = Math.floor(sessionDurationSeconds / 60);
+            const sessionEndTime = new Date();
+            if (save && actualMinutes > 0) {
+                saveData(actualMinutes, sessionStartTime, sessionEndTime);
+                alert(`专注结束！\n有效专注时长：${actualMinutes}分钟`);
+            }
+            resetUI();
+        }
+
+        function skipRest() { finishSession(false); }
+
+        function resetUI() {
+            isRunning = false;
+            currentState = 'IDLE';
+            mainTime = totalTime;
+            sessionDurationSeconds = 0;
+            sessionStartTime = null;
+            document.getElementById('status-text').innerText = "准备专注";
+            document.getElementById('status-text').style.color = 'var(--text-sub)';
+            document.getElementById('sub-info').innerText = "";
+            document.getElementById('glow-ring').classList.remove('running');
+            updatePlayButton(false);
+            document.getElementById('btn-stop').style.display = 'none';
+            document.getElementById('btn-skip').style.display = 'none';
+            document.getElementById('btn-reset').style.display = 'flex';
+            updateDisplay();
+        }
+
+        function updateDisplay() {
+            let t = Math.abs(mainTime);
+            let m = Math.floor(t / 60).toString().padStart(2,'0');
+            let s = (t % 60).toString().padStart(2,'0');
+            let timeStr = `${m}:${s}`;
+            if (currentState === 'OVERTIME') timeStr = "+" + timeStr;
+            document.getElementById('main-timer').innerText = timeStr;
+            if (currentMode === 'RANDOM' && (currentState === 'RUNNING' || currentState === 'OVERTIME')) {
+                document.getElementById('sub-info').innerText = `检测: ${eventTimeLeft}秒`;
+            } else if (currentState === 'MICRO_REST') {
+                document.getElementById('sub-info').innerText = `休息: ${eventTimeLeft}秒`;
+            } else {
+                document.getElementById('sub-info').innerText = "";
+            }
+        }
+
+        function updatePlayButton(playing) {
+            const play = document.getElementById('icon-play');
+            const pause = document.getElementById('icon-pause');
+            if (playing) { play.style.display = 'none'; pause.style.display = 'block'; }
+            else { play.style.display = 'block'; pause.style.display = 'none'; }
+        }
+
+        // --- 数据统计 ---
+        function saveData(actualMinutes, startTime, endTime) {
+            const stats = JSON.parse(localStorage.getItem('zenFocusStats_CN') || '{}');
+            const today = new Date().toISOString().slice(0, 10);
+            if (!stats[today]) stats[today] = { count: 0, total: 0, logs: [] };
+            const formatTime = (date) => date.getHours().toString().padStart(2,'0') + ':' + date.getMinutes().toString().padStart(2,'0');
+            stats[today].count += 1;
+            stats[today].total += actualMinutes;
+            stats[today].logs.push({
+                startStr: formatTime(startTime),
+                endStr: formatTime(endTime),
+                duration: actualMinutes
+            });
+            localStorage.setItem('zenFocusStats_CN', JSON.stringify(stats));
+            loadStats();
+        }
+
+        function loadStats() {
+            const stats = JSON.parse(localStorage.getItem('zenFocusStats_CN') || '{}');
+            const today = new Date().toISOString().slice(0, 10);
+            const todayData = stats[today] || { count: 0, total: 0, logs:[] };
+            
+            document.getElementById('stat-today-time').innerText = todayData.total;
+            document.getElementById('stat-today-count').innerText = todayData.count;
+            let allMin = 0; let allCount = 0;
+            Object.values(stats).forEach(d => { allMin += d.total; allCount += d.count; });
+            document.getElementById('stat-total-time').innerText = (allMin / 60).toFixed(1);
+            document.getElementById('stat-total-count').innerText = allCount;
+            
+            // 周柱状图
+            const chart = document.getElementById('week-chart');
+            chart.innerHTML = '';
+            for(let i=6; i>=0; i--) {
+                const d = new Date(); d.setDate(d.getDate() - i);
+                const k = d.toISOString().slice(0,10);
+                const val = stats[k] ? stats[k].total : 0;
+                const h = Math.min((val/180)*100, 100);
+                chart.innerHTML += `<div class="bar-col"><div class="bar-track"><div class="bar-fill" style="height:${h}%"></div></div><span class="bar-label">${d.getDate()}日</span></div>`;
+            }
+
+            // 更新年度热力图 (刷新数据)
+            renderFullYearHeatmap(stats);
+
+            // 专注记录列表
+            const list = document.getElementById('history-container');
+            list.innerHTML = '';
+            const allDates = Object.keys(stats).sort().reverse();
+            if(allDates.length === 0) list.innerHTML = '<div style="text-align:center; padding:20px; color:#999;">暂无记录</div>';
+            
+            allDates.forEach(date => {
+                const dayData = stats[date];
+                const dateTitle = document.createElement('div');
+                dateTitle.className = 'date-header';
+                const dateObj = new Date(date);
+                dateTitle.innerText = `${dateObj.getMonth()+1}月${dateObj.getDate()}日`;
+                list.appendChild(dateTitle);
+                dayData.logs.reverse().forEach(log => {
+                    const item = document.createElement('div');
+                    item.className = 'record-item';
+                    item.innerHTML = `
+                        <div class="record-left">
+                            <div class="time-range">${log.startStr} - ${log.endStr}</div>
+                            <div class="record-tag"><div class="record-dot"></div> 专注</div>
+                        </div>
+                        <div><span class="record-duration">${formatSmartDuration(log.duration)}</span></div>`;
+                    list.appendChild(item);
+                });
+            });
+        }
+
+        // --- 全年热力图生成 ---
+        function renderFullYearHeatmap(stats = {}) {
+            const grid = document.getElementById('heatmap-grid');
+            grid.innerHTML = '';
+            const today = new Date();
+            const year = today.getFullYear();
+            const startDate = new Date(year, 0, 1); // 1月1日
+            const endDate = new Date(year, 11, 31); // 12月31日
+            
+            // 简单循环全年 (不考虑精确的星期对其，只做平铺以适应手机横滚)
+            // GitHub风格是按周列排列，这里为了手机展示，我们生成365个格子
+            // 并且用 grid-auto-flow: column; grid-template-rows: 7; 来实现周列布局
+            
+            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                const dateStr = d.toISOString().slice(0, 10);
+                const val = stats[dateStr] ? stats[dateStr].total : 0;
+                
+                const cell = document.createElement('div');
+                cell.className = 'heat-cell';
+                if (val > 0) cell.classList.add('bg-l1');
+                if (val > 60) cell.classList.add('bg-l2');
+                if (val > 180) cell.classList.add('bg-l3');
+                grid.appendChild(cell);
+            }
+        }
+        
+        function formatSmartDuration(min) {
+            if(min >= 60) {
+                const h = Math.floor(min/60);
+                const m = min%60;
+                return `${h}<span class="record-unit">h</span> ${m}<span class="record-unit">m</span>`;
+            }
+            return `${min}<span class="record-unit">m</span>`;
+        }
+
+        const API_URL = "https://jsonblob.com/api/jsonBlob";
+        function loadSyncId() { const id = localStorage.getItem('zenSyncId'); if(id) document.getElementById('sync-id').value = id; }
+        async function createNewSyncId() {
+            try {
+                const res = await fetch(API_URL, {method:'POST', headers:{'Content-Type':'application/json'}, body:localStorage.getItem('zenFocusStats_CN') || '{}'});
+                const loc = res.headers.get('Location');
+                const id = loc.substring(loc.lastIndexOf('/') + 1);
+                document.getElementById('sync-id').value = id;
+                localStorage.setItem('zenSyncId', id);
+                document.getElementById('sync-status').innerText = "✅ 同步码已生成";
+            } catch(e) { document.getElementById('sync-status').innerText = "❌ 生成失败"; }
+        }
+        async function uploadData() {
+            const id = document.getElementById('sync-id').value; if(!id) return alert("请输入同步码");
+            try {
+                await fetch(`${API_URL}/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:localStorage.getItem('zenFocusStats_CN') || '{}'});
+                document.getElementById('sync-status').innerText = "✅ 上传成功";
+            } catch(e) { alert("网络错误"); }
+        }
+        async function downloadData() {
+            const id = document.getElementById('sync-id').value; if(!id) return alert("请输入同步码");
+            try {
+                const res = await fetch(`${API_URL}/${id}`);
+                if(res.ok) {
+                    const cloud = await res.json();
+                    if(confirm("确定要用云端数据覆盖本地数据吗？")) {
+                        localStorage.setItem('zenFocusStats_CN', JSON.stringify(cloud));
+                        loadStats();
+                        document.getElementById('sync-status').innerText = "✅ 下载成功";
+                    }
+                }
+            } catch(e) { alert("网络错误"); }
+        }
+
+        function getRandomInterval() { const min=document.getElementById('input-min').value*60; const max=document.getElementById('input-max').value*60; return Math.floor(Math.random()*(max-min+1))+min; }
+        async function requestWakeLock() { try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e){} }
+        function releaseWakeLock() { if(wakeLock){ wakeLock.release(); wakeLock=null; } }
+
+        function playTone(freq, type, duration) {
+            const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+            osc.type = type; osc.frequency.value = freq; osc.connect(gain); gain.connect(audioCtx.destination);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime); 
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            osc.start(); osc.stop(audioCtx.currentTime + duration);
+        }
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            if (type === 'ding') playTone(880, 'sine', 1);
+            if (type === 'bloop') playTone(440, 'sine', 0.5);
+            if (type === 'bell') playTone(523, 'triangle', 1.5);
+        }
+        function stopAllSounds() { }
+    </script>
+</body>
+</html>

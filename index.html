@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>全能专注终端 (后台运行版)</title>
+    <title>全能专注终端 (修复版)</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧠</text></svg>">
     
     <style>
@@ -489,7 +489,11 @@
         }
 
         function triggerFocusReturn() {
-            playSound('micro_end');
+            // 安全检查：确保音频环境已激活
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            playSound('micro_end'); // 触发修复后的声音
+            
             currentState = document.body.dataset.prevState || 'RUNNING';
             setStyle(currentState === 'OVERTIME' ? 'OVERTIME' : 'FOCUS');
             eventTimeLeft = getRandomInterval();
@@ -580,14 +584,24 @@
 
         function playSound(scene) {
             if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            // 每次播放新声音前，停止旧的（防止声音重叠混乱）
+            if (scene !== 'cycle_end_10s') stopAllSounds(); 
+
             switch(scene) {
-                case 'micro_start': playTone(880, 'sine', 0.8, 0, 0.2); break;
-                case 'micro_end': playTone(440, 'sine', 0.2, 0, 0.2); playTone(440, 'sine', 0.4, 0.25, 0.2); break;
+                case 'micro_start': 
+                    playTone(880, 'sine', 0.8, 0, 0.3); // 提高音量
+                    break;
+                case 'micro_end': 
+                    // 修改：更响亮、更清脆的双声提示（Rising Tone）
+                    playTone(600, 'sine', 0.15, 0, 0.4); 
+                    playTone(1000, 'sine', 0.4, 0.15, 0.4); 
+                    break;
                 case 'cycle_end_10s': 
                     stopAllSounds();
                     const melody = [523, 659, 784, 1046]; 
                     for(let i=0; i<20; i++) { 
-                        playTone(melody[i%4], 'triangle', 0.4, i*0.5, 0.15);
+                        playTone(melody[i%4], 'triangle', 0.4, i*0.5, 0.2);
                     }
                     break;
             }
